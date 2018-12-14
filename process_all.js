@@ -6,9 +6,9 @@ const AWS = require('aws-sdk');
 
 // CONFIGURE THESE!!!
 // ============================================
-const region = 'insert_value';
-const accountId = 'insert_value';
-const funcName = 'insert_value';
+const region = 'us-west-2';
+const accountId = '598504753594';
+const funcName = 'cloudwatch-logs-to-logzio-dev-ship-logs-to-logzio';
 const retentionDays = 7; // change this if you want
 const prefix = '/aws/lambda'; // use '/' if you want to process every log group
 // ============================================
