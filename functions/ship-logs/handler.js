@@ -2,8 +2,9 @@
 
 const co         = require('co');
 const Promise    = require('bluebird');
-const processAll = require('./lib');
 const zlib       = Promise.promisifyAll(require('zlib'));
+
+const processAll = require('./lib');
 
 module.exports.handler = co.wrap(function* (event, context, callback) {
   try {

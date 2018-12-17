@@ -1,36 +1,26 @@
 'use strict';
 
-const co      = require('co');
-const Promise = require('bluebird');
-const parse   = require('./parse');
-const net     = require('net');
-const host    = process.env.logstash_host;
-const port    = process.env.logstash_port;
-const token   = process.env.token;
+const _          = require('lodash');
+const co         = require('co');
+const Promise    = require('bluebird');
+const net        = require('net');
 
-let processAll = co.wrap(function* (logGroup, logStream, logEvents) {
-  let lambdaVersion = parse.lambdaVersion(logStream);
-  let functionName  = parse.functionName(logGroup);
+const parse      = require('./parse');
+const cloudwatch = require('./cloudwatch');
 
+const host       = process.env.logstash_host;
+const port       = process.env.logstash_port;
+const { token }  = process.env;
+
+const sendLogs = co.wrap(function* (logs) {
   yield new Promise((resolve, reject) => {
-    let socket = net.connect(port, host, function() {
+    const socket = net.connect(port, host, function() {
       socket.setEncoding('utf8');
 
-      for (let logEvent of logEvents) {
+      for (let log of logs) {
         try {
-          let log = parse.logMessage(logEvent);
-          if (log) {
-            log.logStream     = logStream;
-            log.logGroup      = logGroup;
-            log.functionName  = functionName;
-            log.lambdaVersion = lambdaVersion;
-            log.fields        = log.fields || {};
-            log.type          = "cloudwatch";
-            log.token         = token;
-
-            socket.write(JSON.stringify(log) + '\n');
-          }
-        
+          log.token = token;
+          socket.write(JSON.stringify(log) + '\n');
         } catch (err) {
           console.error(err.message);
         }
@@ -41,6 +31,33 @@ let processAll = co.wrap(function* (logGroup, logStream, logEvents) {
       resolve();
     });
   });
+});
+
+const publishMetrics = co.wrap(function* (metrics) {
+  const metricDatumByNamespace = _.groupBy(metrics, m => m.Namespace);
+  const namespaces = _.keys(metricDatumByNamespace);
+  for (let namespace of namespaces) {
+    const datum = metricDatumByNamespace[namespace];
+
+    try {
+      yield cloudwatch.publish(datum, namespace);
+    } catch (err) {
+      console.error("failed to publish metrics", err.message);
+      console.error(JSON.stringify(datum));
+    }
+  }
+});
+
+const processAll = co.wrap(function* (logGroup, logStream, logEvents) {
+  const result = parse.all(logGroup, logStream, logEvents);
+
+  if (result.logs) {
+    yield sendLogs(result.logs);
+  }
+
+  if (result.customMetrics) {
+    yield publishMetrics(result.customMetrics);
+  }
 });
 
 module.exports = processAll;
