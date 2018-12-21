@@ -3,10 +3,11 @@
 const co             = require('co');
 const Promise        = require('bluebird');
 const AWS            = require('aws-sdk');
+
 const cloudWatchLogs = Promise.promisifyAll(new AWS.CloudWatchLogs());
 const accountId      = process.env.account_id;
-const region         = AWS.config.region;
-const prefix         = process.env.prefix;
+const { region }     = AWS.config;
+const { prefix }     = process.env;
 
 function getDestFuncArn() {
   // a Lambda function ARN looks like this:
@@ -32,7 +33,7 @@ let subscribe = function* (logGroupName) {
     destinationArn : getDestFuncArn(),
     logGroupName   : logGroupName,
     filterName     : 'ship-logs',
-    filterPattern  : '[timestamp=*Z, request_id="*-*", event]'
+    filterPattern  : ''
   };
 
   yield cloudWatchLogs.putSubscriptionFilterAsync(options);
