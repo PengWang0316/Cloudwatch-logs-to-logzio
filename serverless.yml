@@ -1,0 +1,89 @@
+service: cloudwatch-logs-to-logzio
+
+plugins:
+ - serverless-pseudo-parameters
+ - serverless-iam-roles-per-function
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  region: us-west-2
+  stage: dev
+  versionFunctions: false
+  
+functions:
+  ship-logs-to-logzio:
+    handler: functions/ship-logs/handler.handler
+    description: Sends CloudWatch logs to Logz.io
+    memorySize: 1024
+    environment:
+      logstash_host: ${ssm:/cloudwatch-logs-to-logzio/dev/logstash_host}
+      logstash_port: ${ssm:/cloudwatch-logs-to-logzio/dev/logstash_port}
+      token: ${ssm:/cloudwatch-logs-to-logzio/dev/logzio-token}
+    iamRoleStatementsName: ship-logs-role
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action: "cloudwatch:PutMetricData"
+        Resource: "*"
+
+  set-retention:
+    handler: functions/set-retention/handler.handler
+    description: Sets the log retention policy to the specified no. of days
+    memorySize: 128
+    environment:
+      retention_days: 7
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - "logs:PutRetentionPolicy"
+        Resource: "*"
+    events:
+      - cloudwatchEvent:
+          event:
+            source:
+              - aws.logs
+            detail-type:
+              - AWS API Call via CloudTrail
+            detail:
+              eventSource:
+                - logs.amazonaws.com
+              eventName:
+                - CreateLogGroup
+
+  subscribe:
+    handler: functions/subscribe/handler.handler
+    description: Subscribe logs to the ship-logs-to-logzio function
+    memorySize: 128
+    environment:
+      dest_func: "${self:service}-${self:provider.stage}-ship-logs-to-logzio"
+      account_id: "#{AWS::AccountId}"
+      prefix: "/aws/lambda"
+    iamRoleStatements:
+      - Effect: "Allow"
+        Action:
+          - "logs:PutSubscriptionFilter"
+        Resource: "*"
+    events:
+      - cloudwatchEvent:
+          event:
+            source:
+              - aws.logs
+            detail-type:
+              - AWS API Call via CloudTrail
+            detail:
+              eventSource:
+                - logs.amazonaws.com
+              eventName:
+                - CreateLogGroup
+
+resources:
+  Resources:
+    LambdaInvokePermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName:
+          Fn::Join:
+            - ""
+            - - "Ref" : "ShipDashlogsDashtoDashlogzioLambdaFunction"
+        Principal: logs.#{AWS::Region}.amazonaws.com
